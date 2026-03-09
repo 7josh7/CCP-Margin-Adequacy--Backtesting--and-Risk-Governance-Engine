@@ -5,7 +5,9 @@ import pandas as pd
 import numpy as np
 from src.reporting import (daily_summary, weekly_exception_report,
                            daily_summary_markdown, weekly_report_markdown,
-                           committee_pack_markdown, monthly_committee_pack)
+                           committee_pack_markdown, monthly_committee_pack,
+                           export_member_margin_adequacy,
+                           generate_breach_register, daily_risk_review)
 
 
 @pytest.fixture
@@ -115,3 +117,75 @@ class TestCommitteePack:
         md = committee_pack_markdown(result)
         assert "Monthly Risk Committee Pack" in md
         assert "Known Limitations" in md
+
+
+class TestExportMemberMarginAdequacy:
+    def test_returns_dataframe(self, sample_adequacy):
+        d = sample_adequacy["date"].iloc[0]
+        result = export_member_margin_adequacy(d, sample_adequacy)
+        assert isinstance(result, pd.DataFrame)
+        assert not result.empty
+        assert "member_id" in result.columns
+
+    def test_filters_by_date(self, sample_adequacy):
+        d = sample_adequacy["date"].iloc[0]
+        result = export_member_margin_adequacy(d, sample_adequacy)
+        assert (result["date"] == d).all()
+
+    def test_empty_date(self, sample_adequacy):
+        result = export_member_margin_adequacy(
+            pd.Timestamp("2099-01-01"), sample_adequacy)
+        assert result.empty
+
+
+class TestGenerateBreachRegister:
+    def test_returns_dataframe(self, sample_adequacy, sample_exceptions):
+        d = sample_adequacy["date"].iloc[0]
+        dq = pd.DataFrame(columns=["date", "issue", "risk_factor_id"])
+        esc = pd.DataFrame(columns=["date", "severity", "rule_id"])
+        result = generate_breach_register(d, sample_adequacy,
+                                          sample_exceptions, dq, esc)
+        assert isinstance(result, pd.DataFrame)
+
+    def test_breach_id_format(self, sample_adequacy, sample_exceptions):
+        d = sample_adequacy["date"].iloc[0]
+        dq = pd.DataFrame(columns=["date", "issue", "risk_factor_id"])
+        esc = pd.DataFrame(columns=["date", "severity", "rule_id"])
+        result = generate_breach_register(d, sample_adequacy,
+                                          sample_exceptions, dq, esc)
+        if not result.empty:
+            assert result["breach_id"].str.startswith("BRX-").all()
+
+    def test_required_columns(self, sample_adequacy, sample_exceptions):
+        d = sample_adequacy["date"].iloc[0]
+        dq = pd.DataFrame(columns=["date", "issue", "risk_factor_id"])
+        esc = pd.DataFrame(columns=["date", "severity", "rule_id"])
+        result = generate_breach_register(d, sample_adequacy,
+                                          sample_exceptions, dq, esc)
+        if not result.empty:
+            for col in ["breach_id", "date", "member_id", "breach_type",
+                        "severity", "owner", "status"]:
+                assert col in result.columns
+
+
+class TestDailyRiskReview:
+    def test_returns_markdown(self, sample_adequacy, sample_exceptions):
+        d = sample_adequacy["date"].iloc[0]
+        dq = pd.DataFrame(columns=["date", "issue"])
+        esc = pd.DataFrame(columns=["date", "severity", "rule_id",
+                                     "trigger", "action"])
+        result = daily_risk_review(d, sample_adequacy,
+                                   sample_exceptions, dq, esc)
+        assert isinstance(result, str)
+        assert "Daily Risk Review" in result
+
+    def test_contains_all_sections(self, sample_adequacy, sample_exceptions):
+        d = sample_adequacy["date"].iloc[0]
+        dq = pd.DataFrame(columns=["date", "issue"])
+        esc = pd.DataFrame(columns=["date", "severity", "rule_id",
+                                     "trigger", "action"])
+        result = daily_risk_review(d, sample_adequacy,
+                                   sample_exceptions, dq, esc)
+        assert "Weakest Members" in result
+        assert "Recommended Actions" in result
+        assert "Escalation Summary" in result

@@ -1,0 +1,9 @@
+breach_id,date,member_id,breach_type,severity,description,owner,status,escalation_level,target_resolution_date
+BRX-20251205-0001,2025-12-05,MBR_001,margin_insufficiency,high,Coverage ratio 94.00% below 1.00 threshold,Clearing Risk,open,senior_review,2025-12-06
+BRX-20251205-0002,2025-12-05,MBR_002,margin_insufficiency,high,Coverage ratio 90.00% below 1.00 threshold,Clearing Risk,open,senior_review,2025-12-06
+BRX-20251205-0003,2025-12-05,MBR_003,margin_insufficiency,high,Coverage ratio 74.00% below 1.00 threshold,Clearing Risk,open,senior_review,2025-12-06
+BRX-20251205-0004,2025-12-05,MBR_004,margin_insufficiency,high,Coverage ratio 93.00% below 1.00 threshold,Clearing Risk,open,senior_review,2025-12-06
+BRX-20251205-0005,2025-12-05,MBR_009,margin_insufficiency,high,Coverage ratio 62.00% below 1.00 threshold,Clearing Risk,open,senior_review,2025-12-06
+BRX-20251205-0006,2025-12-05,MBR_010,margin_insufficiency,high,Coverage ratio 83.00% below 1.00 threshold,Clearing Risk,open,senior_review,2025-12-06
+BRX-20251205-0007,2025-12-05,MBR_004,backtesting_exception,medium,"Actual loss $19,133,899 exceeded prior-day margin $19,001,211",Risk Methodology,open,analyst_review,2025-12-08
+BRX-20251205-0008,2025-12-05,MBR_004,model_control,medium,exposure_jump: nan,Quant Risk,open,analyst_review,2025-12-07

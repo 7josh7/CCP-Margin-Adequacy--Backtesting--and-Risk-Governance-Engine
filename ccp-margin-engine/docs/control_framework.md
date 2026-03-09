@@ -202,6 +202,75 @@ When a control failure is detected that may affect margin accuracy but does not 
 3. The provisional flag is cleared only after the underlying issue is resolved and the run is re-executed, or a senior risk officer signs off on the provisional results
 4. Provisional runs are tracked in the model change log
 
+### Provisional-Run Criteria
+
+A run is marked provisional when any of the following conditions hold:
+
+| Condition | Trigger | Action |
+|-----------|---------|--------|
+| Critical risk factor stale | Primary equity or rates factor unchanged > 2 days | Use prior values; flag |
+| Missing risk factor | Any expected factor absent | Fill from prior day; flag |
+| Pricing failure | Black-Scholes returns NaN/Inf/negative on material position | Use prior-day price; flag |
+| Volume data absent | ADV unavailable for liquidity calculation | Use fallback ADV; flag |
+
+---
+
+## 8. Model Performance Review Framework
+
+The model performance review framework defines how the margin model is monitored for ongoing adequacy and when corrective action is triggered.
+
+### 8.1 Rolling Exception Monitoring
+
+- **Metric:** 250-business-day rolling count of backtesting exceptions per member
+- **Frequency:** Computed daily, reviewed weekly
+- **Thresholds:**
+  - Green: < 3 exceptions → standard monitoring
+  - Amber: 3–4 exceptions → increased monitoring, root cause analysis
+  - Red: ≥ 5 exceptions → formal methodology review triggered
+
+### 8.2 Exception Clustering Rule
+
+Exceptions are examined for temporal clustering vs. random distribution:
+
+- If ≥ 3 exceptions occur within any 20-business-day window: clustering is flagged
+- Clustered exceptions indicate systematic model weakness in a specific regime
+- Non-clustered exceptions may reflect rare but valid tail events
+
+### 8.3 Regime-Based Analysis
+
+When exception clustering is detected, the model performance review includes:
+
+1. **Regime identification** — classify the period as low-vol, normal, or high-vol based on realised SPX volatility
+2. **Regime-specific exception rate** — compute exception frequency within each regime
+3. **Model responsiveness** — verify that margin levels increase during vol transitions (margin should respond within 5–10 trading days of a vol regime shift)
+4. **Responsiveness gap** — if margin fails to increase during a vol spike and exceptions occur, this is a model weakness rather than a data issue
+
+### 8.4 Methodology Review Trigger
+
+A formal methodology review is triggered when:
+
+| Trigger | Review Scope | Owner |
+|---------|-------------|-------|
+| ≥ 5 exceptions (rolling 250d) for any member | Full model adequacy assessment | Model Validation |
+| ≥ 3 clustered exceptions (within 20d) | Regime-specific calibration review | Risk Methodology |
+| Margin unresponsive during vol spike | VaR window and lookback assessment | Risk Methodology |
+| HSVaR and Stressed VaR persistently equal | Stressed window selection review | Model Validation |
+
+### 8.5 Control Override Tracking
+
+Any manual override of a model-control check must be documented:
+
+| Field | Description |
+|-------|-------------|
+| Override ID | Sequential identifier |
+| Date | When override was applied |
+| Control ID | Which control was overridden (e.g., DQ-001) |
+| Reason | Justification for override |
+| Duration | Expected duration of override |
+| Approved By | Senior Risk Officer or Risk Committee |
+| Review Date | When override will be reassessed |
+| Status | Active / Expired / Revoked |
+
 ---
 
 ## Document Control
@@ -209,3 +278,4 @@ When a control failure is detected that may affect margin accuracy but does not 
 | Version | Date | Author | Change |
 |---------|------|--------|--------|
 | 1.0 | March 2026 | Risk Controls | Initial version |
+| 1.1 | March 2026 | Risk Controls | Added provisional-run criteria, model performance review framework, control override tracking |

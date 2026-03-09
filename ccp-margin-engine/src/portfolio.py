@@ -255,6 +255,38 @@ def generate_collateral(positions: pd.DataFrame,
 
 
 # ──────────────────────────────────────────────────────────────────
+# Product universe (auditable CSV)
+# ──────────────────────────────────────────────────────────────────
+_LIQUIDITY_BUCKET_MAP = {rf[0]: rf[6] for rf in _RISK_FACTORS}
+
+def generate_product_universe(instruments: pd.DataFrame) -> pd.DataFrame:
+    """
+    Build a product universe table that makes the instrument coverage
+    explicit and auditable.  Columns:
+        instrument_id, asset_class, product_type, underlying,
+        liquidity_bucket, exchange_style, cleared_flag
+    """
+    _ASSET_CLASS = {
+        "SPX": "equity_index", "NDX": "equity_index", "RTY": "equity_index",
+        "TY": "rates", "FV": "rates", "US": "rates",
+        "VIX": "volatility", "CL": "commodity",
+    }
+    rows = []
+    for _, inst in instruments.iterrows():
+        und = inst["underlying"]
+        rows.append({
+            "instrument_id": inst["instrument_id"],
+            "asset_class": _ASSET_CLASS.get(und, "unknown"),
+            "product_type": "listed_option" if inst["instrument_type"] == "option" else f"{_ASSET_CLASS.get(und, 'unknown')}_future",
+            "underlying": und,
+            "liquidity_bucket": _LIQUIDITY_BUCKET_MAP.get(und, "semi_liquid"),
+            "exchange_style": "listed",
+            "cleared_flag": True,
+        })
+    return pd.DataFrame(rows)
+
+
+# ──────────────────────────────────────────────────────────────────
 # All-in-one generator
 # ──────────────────────────────────────────────────────────────────
 def generate_all(save: bool = True) -> Tuple[pd.DataFrame, ...]:
@@ -268,11 +300,14 @@ def generate_all(save: bool = True) -> Tuple[pd.DataFrame, ...]:
     pos = generate_positions(md, inst, mem)
     coll = generate_collateral(pos, mem)
 
+    prod_univ = generate_product_universe(inst)
+
     if save:
         save_synthetic(md, "market_data")
         save_synthetic(inst, "instruments")
         save_synthetic(mem, "member_profiles")
         save_synthetic(pos, "positions")
         save_synthetic(coll, "collateral")
+        save_synthetic(prod_univ, "product_universe")
 
     return md, inst, mem, pos, coll

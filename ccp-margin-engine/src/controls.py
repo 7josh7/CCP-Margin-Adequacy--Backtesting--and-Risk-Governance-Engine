@@ -104,8 +104,10 @@ def compute_adequacy(margin_results: pd.DataFrame,
     Returns a DataFrame with:
         date, member_id, required_margin, posted_margin,
         coverage_ratio, buffer, traffic_light,
-        margin_call, baseline_margin, liquidity_addon,
-        concentration_addon
+        margin_call, threshold_breached, mta_triggered,
+        baseline_margin, liquidity_addon,
+        concentration_addon, liquidation_adjusted_loss,
+        hsvar_99, stressed_var_99
     """
     merged = margin_results.merge(
         collateral[["date", "member_id", "collateral_value_post_haircut"]],
@@ -113,6 +115,10 @@ def compute_adequacy(margin_results: pd.DataFrame,
         how="left"
     )
     merged["posted_margin"] = merged["collateral_value_post_haircut"].fillna(0)
+
+    # Ensure backwards-compatible column names
+    if "hs_var" in merged.columns and "hsvar_99" not in merged.columns:
+        merged.rename(columns={"hs_var": "hsvar_99", "stressed_var": "stressed_var_99"}, inplace=True)
 
     merged["coverage_ratio"] = merged.apply(
         lambda r: coverage_ratio(r["posted_margin"], r["required_margin"]),
@@ -128,8 +134,13 @@ def compute_adequacy(margin_results: pd.DataFrame,
         axis=1
     )
 
+    # Threshold/MTA flags for auditability
+    merged["threshold_breached"] = (merged["required_margin"] - merged["posted_margin"]) > config.MARGIN_THRESHOLD
+    merged["mta_triggered"] = merged["margin_call"] >= config.MINIMUM_TRANSFER_AMOUNT
+
     cols = ["date", "member_id", "required_margin", "posted_margin",
             "coverage_ratio", "buffer", "traffic_light", "margin_call",
+            "threshold_breached", "mta_triggered",
             "baseline_margin", "liquidity_addon", "concentration_addon",
-            "hs_var", "stressed_var"]
+            "liquidation_adjusted_loss", "hsvar_99", "stressed_var_99"]
     return merged[[c for c in cols if c in merged.columns]].round(2)

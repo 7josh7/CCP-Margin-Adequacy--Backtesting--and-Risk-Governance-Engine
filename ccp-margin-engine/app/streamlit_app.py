@@ -29,7 +29,10 @@ from src.escalation import generate_escalation_log
 from src.reporting import (daily_summary, daily_summary_markdown,
                            weekly_exception_report, weekly_report_markdown,
                            monthly_committee_pack, committee_pack_markdown,
-                           save_report)
+                           save_report, save_csv_report,
+                           export_member_margin_adequacy,
+                           generate_breach_register,
+                           daily_risk_review)
 
 st.set_page_config(page_title="CCP Margin Engine", layout="wide")
 
@@ -145,11 +148,13 @@ selected_date = st.sidebar.select_slider(
 # ══════════════════════════════════════════════════════════════════
 # TAB LAYOUT
 # ══════════════════════════════════════════════════════════════════
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📊 Member Overview",
     "🔍 Margin Decomposition",
     "📈 Backtesting",
     "⚙️ Controls & DQ",
+    "📝 Breach Register",
+    "📊 Daily Risk Review",
     "📋 Committee Summary",
 ])
 
@@ -204,14 +209,20 @@ with tab2:
         if not day_margin.empty:
             dm = day_margin.iloc[0]
             cols = st.columns(5)
-            cols[0].metric("HS VaR", f"${dm.get('hs_var', 0):,.0f}")
-            cols[1].metric("Stressed VaR", f"${dm.get('stressed_var', 0):,.0f}")
+            cols[0].metric("HS VaR 99%", f"${dm.get('hsvar_99', dm.get('hs_var', 0)):,.0f}")
+            cols[1].metric("Stressed VaR 99%", f"${dm.get('stressed_var_99', dm.get('stressed_var', 0)):,.0f}")
             cols[2].metric("Liquidity Add-On", f"${dm.get('liquidity_addon', 0):,.0f}")
             cols[3].metric("Concentration Add-On", f"${dm.get('concentration_addon', 0):,.0f}")
             cols[4].metric("Total Required", f"${dm.get('required_margin', 0):,.0f}")
 
+            if 'liquidation_adjusted_loss' in dm.index:
+                st.metric("Liquidation-Adjusted Loss", f"${dm['liquidation_adjusted_loss']:,.0f}")
+
         # Stacked area of margin components over time
-        comp_cols = ["hs_var", "stressed_var", "liquidity_addon", "concentration_addon"]
+        comp_cols = ["hsvar_99", "stressed_var_99", "liquidity_addon", "concentration_addon"]
+        # Fallback to old column names if new ones not present
+        if "hsvar_99" not in mem_margin.columns and "hs_var" in mem_margin.columns:
+            comp_cols = ["hs_var", "stressed_var", "liquidity_addon", "concentration_addon"]
         avail_comp = [c for c in comp_cols if c in mem_margin.columns]
         if avail_comp:
             fig2 = go.Figure()
@@ -323,8 +334,51 @@ with tab4:
             st.plotly_chart(fig7, use_container_width=True)
 
 
-# ── TAB 5: Committee Summary ────────────────────────────────────
+# ── TAB 5: Breach Register ──────────────────────────────────────
 with tab5:
+    st.header("Breach Register")
+    breach_reg = generate_breach_register(selected_date, adequacy, exceptions,
+                                         dq_flags, esc_log)
+    if breach_reg.empty:
+        st.success(f"No breaches on {str(selected_date)[:10]}.")
+    else:
+        st.metric("Total Breaches", len(breach_reg))
+        col_a, col_b = st.columns(2)
+        with col_a:
+            sev_counts = breach_reg["severity"].value_counts()
+            fig_sev = px.pie(values=sev_counts.values, names=sev_counts.index,
+                             title="Severity Distribution",
+                             color_discrete_map={"high": "#e74c3c", "medium": "#f39c12",
+                                                 "low": "#2ecc71", "info": "#3498db"})
+            st.plotly_chart(fig_sev, use_container_width=True)
+        with col_b:
+            type_counts = breach_reg["breach_type"].value_counts()
+            fig_type = px.bar(x=type_counts.index, y=type_counts.values,
+                              title="Breach Type Breakdown",
+                              labels={"x": "Type", "y": "Count"})
+            st.plotly_chart(fig_type, use_container_width=True)
+        st.dataframe(breach_reg, use_container_width=True, hide_index=True)
+
+        if st.button("Export Breach Register CSV"):
+            path = save_csv_report(breach_reg, "daily",
+                                   f"breach_register_{str(selected_date)[:10]}.csv")
+            st.success(f"Saved to {path}")
+
+
+# ── TAB 6: Daily Risk Review ───────────────────────────────────
+with tab6:
+    st.header("Daily Risk Review")
+    drr_text = daily_risk_review(selected_date, adequacy, exceptions,
+                                 dq_flags, esc_log)
+    st.markdown(drr_text)
+    if st.button("Export Daily Risk Review"):
+        path = save_report(drr_text, "daily",
+                           f"daily_risk_review_{str(selected_date)[:10]}.md")
+        st.success(f"Saved to {path}")
+
+
+# ── TAB 7: Committee Summary ───────────────────────────────────
+with tab7:
     st.header("Committee Summary")
 
     # Daily summary
@@ -376,3 +430,16 @@ st.sidebar.markdown(
 )
 st.sidebar.markdown(f"Confidence: {config.CONFIDENCE_LEVEL:.0%} | "
                     f"Window: {config.HIST_WINDOW}d")
+
+# Product coverage sidebar panel
+try:
+    from src.data_loader import load_synthetic, table_exists as _te
+    if _te("product_universe"):
+        prod_univ = load_synthetic("product_universe")
+        st.sidebar.markdown("---")
+        st.sidebar.markdown(f"**Product Universe:** {len(prod_univ)} instruments")
+        if "asset_class" in prod_univ.columns:
+            for ac, cnt in prod_univ["asset_class"].value_counts().items():
+                st.sidebar.markdown(f"- {ac}: {cnt}")
+except Exception:
+    pass

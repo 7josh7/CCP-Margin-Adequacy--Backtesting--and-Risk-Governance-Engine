@@ -186,8 +186,59 @@ Tier assignment is reviewed quarterly by the Risk Committee.
 
 ---
 
+## 8. Parameter Governance Table
+
+All key model parameters are subject to formal governance. Changes require approval per the model change log process.
+
+| Parameter | Current Value | Config Key | Owner | Review Frequency | Trigger for Review | Approval Status |
+|-----------|-------------:|------------|-------|------------------|--------------------|-----------------|
+| VaR confidence level | 99% | `CONFIDENCE_LEVEL` | Risk Methodology | Annual | Exception rate drift above expected 1% | Approved |
+| Historical window | 500 days | `HIST_WINDOW` | Risk Methodology | Annual | Regime coverage concern | Approved |
+| Stressed window | 60 days | `STRESSED_WINDOW` | Risk Methodology | Quarterly | Stress undercoverage | Approved |
+| Impact coefficient | 0.10 | `IMPACT_COEFFICIENT` | Liquidity Risk | Monthly | Persistent liquidation shortfall | Under review |
+| Concentration bands | 10%/20% ADV | `CONCENTRATION_BANDS` | Clearing Risk | Quarterly | Repeated crowding breaches | Approved |
+| Green threshold | 110% | `GREEN_THRESHOLD` | Risk Committee | Annual | Traffic-light distribution review | Approved |
+| Amber threshold | 100% | `AMBER_THRESHOLD` | Risk Committee | Annual | Traffic-light distribution review | Approved |
+| Margin threshold | $100,000 | `MARGIN_THRESHOLD` | Margin Operations | Semi-annual | Operational efficiency review | Approved |
+| Minimum transfer amount | $100,000 | `MINIMUM_TRANSFER_AMOUNT` | Margin Operations | Semi-annual | Operational efficiency review | Approved |
+| Exception warning level | 3 | `BACKTEST_EXCEPTION_WARN` | Model Validation | Annual | False-positive rate assessment | Approved |
+| Exception critical level | 5 | `BACKTEST_EXCEPTION_CRITICAL` | Model Validation | Annual | Methodology review frequency | Approved |
+| Stale data threshold | 2 days | `STALE_DATA_THRESHOLD_DAYS` | Market Data Team | Quarterly | Data feed reliability changes | Approved |
+| Outlier return threshold | 15% | `OUTLIER_RETURN_THRESHOLD` | Risk Analyst | Semi-annual | Market regime shifts | Approved |
+
+---
+
+## 9. Escalation Ladder
+
+The escalation ladder defines the chain of authority for risk events of increasing severity:
+
+```
+Level 1: Risk Analyst
+    └── First-line investigation (same day)
+    └── Amber breaches, single-day red, DQ issues
+
+Level 2: Senior Risk Officer
+    └── Consecutive red days, margin call recommendations
+    └── Sign-off on provisional runs
+    └── Must respond within 1 business day
+
+Level 3: Model Validation
+    └── Backtesting exception threshold breached
+    └── Methodology review and independent challenge
+    └── Report to Risk Committee within 10 business days
+
+Level 4: Risk Committee
+    └── Strategic decisions on model changes
+    └── Watchlist additions/removals
+    └── Approval of methodology enhancements
+    └── Monthly review, ad-hoc if critical
+```
+
+---
+
 ## Document Control
 
 | Version | Date | Author | Change |
 |---------|------|--------|--------|
 | 1.0 | March 2026 | Risk Governance | Initial version |
+| 1.1 | March 2026 | Risk Governance | Added parameter governance table, escalation ladder |

@@ -48,10 +48,14 @@ def main():
     margins = compute_all_margins(pnl, positions, instruments, md, members)
     save_processed(margins, "margin_results")
     print(f"  margin rows:      {len(margins)}")
-    print(f"  avg HS VaR:       ${margins['hs_var'].mean():,.0f}")
-    print(f"  avg stressed VaR: ${margins['stressed_var'].mean():,.0f}")
+    hsvar_col = 'hsvar_99' if 'hsvar_99' in margins.columns else 'hs_var'
+    svar_col = 'stressed_var_99' if 'stressed_var_99' in margins.columns else 'stressed_var'
+    print(f"  avg HS VaR 99%:   ${margins[hsvar_col].mean():,.0f}")
+    print(f"  avg stressed VaR: ${margins[svar_col].mean():,.0f}")
     print(f"  avg liq addon:    ${margins['liquidity_addon'].mean():,.0f}")
     print(f"  avg conc addon:   ${margins['concentration_addon'].mean():,.0f}")
+    if 'liquidation_adjusted_loss' in margins.columns:
+        print(f"  avg liq-adj loss: ${margins['liquidation_adjusted_loss'].mean():,.0f}")
     print(f"  avg total margin: ${margins['required_margin'].mean():,.0f}")
     print(f"  Time: {time.time()-t0:.1f}s")
 
@@ -130,7 +134,10 @@ def main():
     from src.reporting import (daily_summary, daily_summary_markdown,
                                weekly_exception_report, weekly_report_markdown,
                                monthly_committee_pack, committee_pack_markdown,
-                               save_report)
+                               save_report, save_csv_report,
+                               export_member_margin_adequacy,
+                               generate_breach_register,
+                               daily_risk_review)
     latest = adequacy["date"].max()
 
     ds = daily_summary(latest, adequacy, dq_flags, esc_log)
@@ -147,6 +154,28 @@ def main():
     cp_md = committee_pack_markdown(cp)
     p3 = save_report(cp_md, "committee_pack", f"committee_pack_{str(latest)[:10]}.md")
     print(f"  Committee pack saved:  {p3.name}")
+
+    # New outputs: breach register, member adequacy, daily risk review
+    adequacy_tbl = export_member_margin_adequacy(latest, adequacy)
+    if not adequacy_tbl.empty:
+        p4 = save_csv_report(adequacy_tbl, "daily",
+                             f"member_margin_adequacy_{str(latest)[:10]}.csv")
+        print(f"  Member adequacy CSV:   {p4.name}")
+
+    breach_reg = generate_breach_register(latest, adequacy, exceptions,
+                                          dq_flags, esc_log)
+    if not breach_reg.empty:
+        p5 = save_csv_report(breach_reg, "daily",
+                             f"breach_register_{str(latest)[:10]}.csv")
+        print(f"  Breach register saved: {p5.name}  ({len(breach_reg)} breaches)")
+    else:
+        print("  Breach register:       0 breaches")
+
+    drr = daily_risk_review(latest, adequacy, exceptions, dq_flags, esc_log)
+    p6 = save_report(drr, "daily",
+                     f"daily_risk_review_{str(latest)[:10]}.md")
+    print(f"  Daily risk review:     {p6.name}")
+
     print(f"  Time: {time.time()-t0:.1f}s")
 
     # ── Done ─────────────────────────────────────────────────────

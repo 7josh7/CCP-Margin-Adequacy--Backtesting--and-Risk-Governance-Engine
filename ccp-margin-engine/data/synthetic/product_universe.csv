@@ -1,0 +1,13 @@
+instrument_id,asset_class,product_type,underlying,liquidity_bucket,exchange_style,cleared_flag
+ES1,equity_index,equity_index_future,SPX,liquid,listed,True
+NQ1,equity_index,equity_index_future,NDX,liquid,listed,True
+RTY1,equity_index,equity_index_future,RTY,semi_liquid,listed,True
+TY1,rates,rates_future,TY,liquid,listed,True
+FV1,rates,rates_future,FV,liquid,listed,True
+US1,rates,rates_future,US,semi_liquid,listed,True
+VX1,volatility,volatility_future,VIX,semi_liquid,listed,True
+CL1,commodity,commodity_future,CL,liquid,listed,True
+SPX_C4900,equity_index,listed_option,SPX,liquid,listed,True
+SPX_P4700,equity_index,listed_option,SPX,liquid,listed,True
+NDX_C17000,equity_index,listed_option,NDX,liquid,listed,True
+NDX_P16500,equity_index,listed_option,NDX,liquid,listed,True

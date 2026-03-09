@@ -273,3 +273,249 @@ def save_report(text: str, folder: str, filename: str) -> Path:
     path = out_dir / filename
     path.write_text(text, encoding="utf-8")
     return path
+
+
+def save_csv_report(df: pd.DataFrame, folder: str, filename: str) -> Path:
+    out_dir = config.REPORTS_DIR / folder
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / filename
+    df.to_csv(path, index=False)
+    return path
+
+
+# ══════════════════════════════════════════════════════════════════
+# MEMBER MARGIN ADEQUACY TABLE (CSV)
+# ══════════════════════════════════════════════════════════════════
+def export_member_margin_adequacy(date: pd.Timestamp,
+                                  adequacy: pd.DataFrame) -> pd.DataFrame:
+    """
+    Extract member-level adequacy table for a given date with all
+    columns visible for audit: posted, required, coverage, traffic
+    light, margin call details, threshold/MTA flags.
+    """
+    day = adequacy[adequacy["date"] == date].copy()
+    cols = ["date", "member_id", "posted_margin", "required_margin",
+            "coverage_ratio", "traffic_light", "margin_call",
+            "threshold_breached", "mta_triggered",
+            "hsvar_99", "stressed_var_99", "liquidity_addon",
+            "concentration_addon", "liquidation_adjusted_loss"]
+    return day[[c for c in cols if c in day.columns]]
+
+
+# ══════════════════════════════════════════════════════════════════
+# BREACH REGISTER
+# ══════════════════════════════════════════════════════════════════
+_BREACH_OWNERS = {
+    "margin_insufficiency": "Clearing Risk",
+    "backtesting_exception": "Risk Methodology",
+    "data_quality": "Risk Control",
+    "model_control": "Quant Risk",
+    "concentration_breach": "Clearing Risk",
+}
+
+
+def generate_breach_register(date: pd.Timestamp,
+                             adequacy: pd.DataFrame,
+                             exceptions: pd.DataFrame,
+                             dq_flags: pd.DataFrame,
+                             escalation_log: pd.DataFrame) -> pd.DataFrame:
+    """
+    Build a single-date breach register with:
+        breach_id, date, member_id, breach_type, severity,
+        description, owner, status, escalation_level,
+        target_resolution_date
+    """
+    rows = []
+    seq = 1
+
+    # Margin insufficiency breaches
+    day_ad = adequacy[adequacy["date"] == date]
+    for _, r in day_ad[day_ad["traffic_light"] == "red"].iterrows():
+        rows.append({
+            "breach_id": f"BRX-{date.strftime('%Y%m%d')}-{seq:04d}",
+            "date": date,
+            "member_id": r["member_id"],
+            "breach_type": "margin_insufficiency",
+            "severity": "high",
+            "description": f"Coverage ratio {r['coverage_ratio']:.2%} below 1.00 threshold",
+            "owner": "Clearing Risk",
+            "status": "open",
+            "escalation_level": "senior_review",
+            "target_resolution_date": date + timedelta(days=1),
+        })
+        seq += 1
+
+    # Backtesting exception breaches
+    day_exc = exceptions[exceptions["date"] == date] if not exceptions.empty else pd.DataFrame()
+    for _, r in day_exc[day_exc["is_exception"] == True].iterrows():
+        rows.append({
+            "breach_id": f"BRX-{date.strftime('%Y%m%d')}-{seq:04d}",
+            "date": date,
+            "member_id": r["member_id"],
+            "breach_type": "backtesting_exception",
+            "severity": "medium",
+            "description": f"Actual loss ${r['actual_loss']:,.0f} exceeded prior-day margin ${r['prior_margin']:,.0f}",
+            "owner": "Risk Methodology",
+            "status": "open",
+            "escalation_level": "methodology_review" if r["actual_loss"] > r["prior_margin"] * 1.5 else "analyst_review",
+            "target_resolution_date": date + timedelta(days=3),
+        })
+        seq += 1
+
+    # Data quality breaches
+    day_dq = dq_flags[dq_flags["date"] == date] if not dq_flags.empty else pd.DataFrame()
+    for _, r in day_dq.iterrows():
+        issue = r.get("issue", "unknown")
+        bt = "model_control" if issue in ("implausible_vol", "exposure_jump") else "data_quality"
+        rows.append({
+            "breach_id": f"BRX-{date.strftime('%Y%m%d')}-{seq:04d}",
+            "date": date,
+            "member_id": r.get("member_id", "SYSTEM"),
+            "breach_type": bt,
+            "severity": "high" if issue in ("implausible_vol", "stale_data") else "medium",
+            "description": f"{issue}: {r.get('risk_factor_id', r.get('instrument_id', 'N/A'))}",
+            "owner": _BREACH_OWNERS.get(bt, "Risk Control"),
+            "status": "open",
+            "escalation_level": "analyst_review",
+            "target_resolution_date": date + timedelta(days=2),
+        })
+        seq += 1
+
+    # Concentration breaches
+    for _, r in day_ad[day_ad.get("concentration_addon", pd.Series(dtype=float)) > 0].iterrows():
+        rows.append({
+            "breach_id": f"BRX-{date.strftime('%Y%m%d')}-{seq:04d}",
+            "date": date,
+            "member_id": r["member_id"],
+            "breach_type": "concentration_breach",
+            "severity": "medium",
+            "description": f"Concentration add-on ${r['concentration_addon']:,.0f} applied",
+            "owner": "Clearing Risk",
+            "status": "open",
+            "escalation_level": "committee_watchlist",
+            "target_resolution_date": date + timedelta(days=5),
+        })
+        seq += 1
+
+    return pd.DataFrame(rows)
+
+
+# ══════════════════════════════════════════════════════════════════
+# DAILY RISK REVIEW MEMO
+# ══════════════════════════════════════════════════════════════════
+def daily_risk_review(date: pd.Timestamp,
+                      adequacy: pd.DataFrame,
+                      exceptions: pd.DataFrame,
+                      dq_flags: pd.DataFrame,
+                      escalation_log: pd.DataFrame) -> str:
+    """
+    Generate a concise daily risk review memo suitable for
+    morning risk meetings, covering the five key areas:
+    top weak members, new breaches, open DQ issues,
+    backtesting alerts, and recommended actions.
+    """
+    day_ad = adequacy[adequacy["date"] == date].copy()
+    date_str = date.strftime('%Y-%m-%d') if hasattr(date, 'strftime') else str(date)[:10]
+
+    lines = [
+        f"# Daily Risk Review – {date_str}",
+        "",
+        "---",
+        "",
+    ]
+
+    # 1. Top 5 weakest members by coverage
+    lines.append("## 1. Top 5 Weakest Members by Coverage")
+    lines.append("")
+    if not day_ad.empty:
+        top5 = day_ad.nsmallest(5, "coverage_ratio")
+        lines.append("| Member | Coverage | Traffic Light | Required Margin | Posted Margin | Margin Call |")
+        lines.append("|--------|----------|---------------|-----------------|---------------|-------------|")
+        for _, r in top5.iterrows():
+            lines.append(
+                f"| {r['member_id']} | {r['coverage_ratio']:.2%} | {r['traffic_light'].upper()} "
+                f"| {r['required_margin']:,.0f} | {r['posted_margin']:,.0f} "
+                f"| {r.get('margin_call', 0):,.0f} |"
+            )
+    else:
+        lines.append("No data available.")
+    lines.append("")
+
+    # 2. New red/amber breaches
+    lines.append("## 2. New Red / Amber Breaches")
+    lines.append("")
+    breaches = day_ad[day_ad["traffic_light"].isin(["red", "amber"])]
+    if not breaches.empty:
+        lines.append(f"- **Red:** {(breaches['traffic_light'] == 'red').sum()} members")
+        lines.append(f"- **Amber:** {(breaches['traffic_light'] == 'amber').sum()} members")
+        for _, r in breaches[breaches["traffic_light"] == "red"].iterrows():
+            lines.append(f"  - {r['member_id']}: coverage {r['coverage_ratio']:.2%}")
+    else:
+        lines.append("No red or amber breaches today.")
+    lines.append("")
+
+    # 3. Open DQ issues
+    lines.append("## 3. Open Data Quality Issues")
+    lines.append("")
+    day_dq = dq_flags[dq_flags["date"] == date] if not dq_flags.empty else pd.DataFrame()
+    if not day_dq.empty:
+        if "issue" in day_dq.columns:
+            for issue, cnt in day_dq["issue"].value_counts().items():
+                lines.append(f"- {issue}: {cnt} flag(s)")
+        else:
+            lines.append(f"- {len(day_dq)} flag(s)")
+    else:
+        lines.append("No data quality issues today.")
+    lines.append("")
+
+    # 4. Backtesting alerts
+    lines.append("## 4. Backtesting Alerts")
+    lines.append("")
+    day_exc = exceptions[exceptions["date"] == date] if not exceptions.empty else pd.DataFrame()
+    n_exc = int(day_exc["is_exception"].sum()) if not day_exc.empty else 0
+    if n_exc > 0:
+        lines.append(f"- **{n_exc} backtesting exception(s)** detected today")
+        for _, r in day_exc[day_exc["is_exception"]].iterrows():
+            lines.append(f"  - {r['member_id']}: loss ${r['actual_loss']:,.0f} vs margin ${r['prior_margin']:,.0f}")
+    else:
+        lines.append("No backtesting exceptions today.")
+    lines.append("")
+
+    # 5. Recommended actions
+    lines.append("## 5. Recommended Actions")
+    lines.append("")
+    actions = []
+    red_count = (day_ad["traffic_light"] == "red").sum() if not day_ad.empty else 0
+    if red_count > 0:
+        actions.append(f"- Initiate margin calls for {red_count} red-flagged member(s)")
+        actions.append("- Convene senior risk review for any members with consecutive red days")
+    if n_exc > 0:
+        actions.append("- Investigate backtesting exceptions; assess whether model recalibration is warranted")
+    if not day_dq.empty:
+        actions.append("- Follow up with Market Data team on open DQ flags")
+        if "stale_data" in day_dq.get("issue", pd.Series()).values:
+            actions.append("- Mark today's run as **provisional** pending stale data resolution")
+    if not actions:
+        actions.append("- No immediate actions required; continue standard monitoring")
+    lines.extend(actions)
+    lines.append("")
+
+    # 6. Escalation summary
+    lines.append("## 6. Escalation Summary")
+    lines.append("")
+    day_esc = escalation_log[escalation_log["date"] == date] if not escalation_log.empty else pd.DataFrame()
+    if not day_esc.empty:
+        lines.append(f"Total escalation events: {len(day_esc)}")
+        if "severity" in day_esc.columns:
+            for sev, cnt in day_esc["severity"].value_counts().items():
+                lines.append(f"- {sev}: {cnt}")
+    else:
+        lines.append("No escalations triggered today.")
+    lines.append("")
+
+    lines += [
+        "---",
+        "",
+        f"*Report generated for {date_str}. This is a stylised educational model.*",
+    ]
+    return "\n".join(lines)

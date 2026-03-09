@@ -101,16 +101,18 @@ def compute_member_margin(member_id: str,
         pos_day, instruments, md_day, baseline)
 
     # ── Total ────────────────────────────────────────────────────
-    required_margin = baseline + liq_addon + conc_addon
+    liquidation_adjusted_loss = baseline + liq_addon + conc_addon
+    required_margin = liquidation_adjusted_loss  # identical by design
 
     return {
         "date": date,
         "member_id": member_id,
-        "hs_var": round(hs_var, 2),
-        "stressed_var": round(s_var, 2),
+        "hsvar_99": round(hs_var, 2),
+        "stressed_var_99": round(s_var, 2),
         "baseline_margin": round(baseline, 2),
         "liquidity_addon": round(liq_addon, 2),
         "concentration_addon": round(conc_addon, 2),
+        "liquidation_adjusted_loss": round(liquidation_adjusted_loss, 2),
         "required_margin": round(required_margin, 2),
         "concentration_breaches": conc_breaches,
     }
