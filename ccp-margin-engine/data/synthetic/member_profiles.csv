@@ -1,0 +1,11 @@
+member_id,member_type,concentration_limit,liquidity_multiplier,margin_threshold,minimum_transfer_amount,governance_tier
+MBR_001,directional_macro,0.2,1.0,100000,100000,tier_2
+MBR_002,directional_macro,0.2,1.0,100000,100000,tier_2
+MBR_003,directional_macro,0.2,1.0,100000,100000,tier_2
+MBR_004,relative_value,0.2,0.8,100000,100000,tier_2
+MBR_005,relative_value,0.2,0.8,100000,100000,tier_2
+MBR_006,concentrated_vol,0.2,1.3,100000,100000,tier_2
+MBR_007,diversified,0.2,0.7,100000,100000,tier_2
+MBR_008,diversified,0.2,0.7,100000,100000,tier_2
+MBR_009,weak_liquidity,0.2,1.5,100000,100000,tier_1
+MBR_010,directional_macro,0.2,1.0,100000,100000,tier_2

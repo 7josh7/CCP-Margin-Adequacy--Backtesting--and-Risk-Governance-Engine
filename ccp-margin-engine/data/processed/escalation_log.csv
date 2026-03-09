@@ -1,0 +1,50 @@
+date,member_id,rule_id,trigger,action,owner,severity
+2025-12-02,MBR_001,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-02,MBR_001,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-02,MBR_002,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-02,MBR_003,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-02,MBR_003,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-02,MBR_009,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-02,MBR_009,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-02,MBR_010,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-02,MBR_010,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-03,MBR_001,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-03,MBR_001,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-03,MBR_002,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-03,MBR_002,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-03,MBR_003,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-03,MBR_003,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-03,MBR_007,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-03,MBR_009,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-03,MBR_009,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-03,MBR_010,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-03,MBR_010,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-04,MBR_001,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-04,MBR_001,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-04,MBR_002,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-04,MBR_003,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-04,MBR_003,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-04,MBR_007,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-04,MBR_007,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-04,MBR_009,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-04,MBR_009,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-04,MBR_010,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-04,MBR_010,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-05,MBR_001,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-05,MBR_001,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-05,MBR_002,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-05,MBR_002,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-05,MBR_003,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-05,MBR_003,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-05,MBR_004,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-05,MBR_004,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-05,MBR_009,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-05,MBR_009,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-05,MBR_010,ESC-001,Single red breach day,Analyst review – confirm cause and document,Risk Analyst,medium
+2025-12-05,MBR_010,ESC-006,Margin call above threshold and MTA,Issue margin call to member – operations notified,Margin Operations,high
+2025-12-05,MBR_001,ESC-002,4 consecutive red days,Senior risk officer review – margin call recommendation,Senior Risk Officer,high
+2025-12-05,MBR_002,ESC-002,4 consecutive red days,Senior risk officer review – margin call recommendation,Senior Risk Officer,high
+2025-12-05,MBR_003,ESC-002,4 consecutive red days,Senior risk officer review – margin call recommendation,Senior Risk Officer,high
+2025-12-04,MBR_007,ESC-002,2 consecutive red days,Senior risk officer review – margin call recommendation,Senior Risk Officer,high
+2025-12-05,MBR_009,ESC-002,4 consecutive red days,Senior risk officer review – margin call recommendation,Senior Risk Officer,high
+2025-12-05,MBR_010,ESC-002,4 consecutive red days,Senior risk officer review – margin call recommendation,Senior Risk Officer,high

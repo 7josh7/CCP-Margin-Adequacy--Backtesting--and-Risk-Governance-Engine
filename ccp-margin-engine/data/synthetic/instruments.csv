@@ -1,0 +1,13 @@
+instrument_id,instrument_type,underlying,contract_multiplier,expiry,strike,option_type
+ES1,future,SPX,50.0,2025-03-21,,
+NQ1,future,NDX,20.0,2025-03-21,,
+RTY1,future,RTY,50.0,2025-03-21,,
+TY1,future,TY,1000.0,2025-03-20,,
+FV1,future,FV,1000.0,2025-03-20,,
+US1,future,US,1000.0,2025-06-19,,
+VX1,future,VIX,1000.0,2025-03-19,,
+CL1,future,CL,1000.0,2025-04-22,,
+SPX_C4900,option,SPX,100.0,2025-03-21,4900.0,call
+SPX_P4700,option,SPX,100.0,2025-03-21,4700.0,put
+NDX_C17000,option,NDX,20.0,2025-03-21,17000.0,call
+NDX_P16500,option,NDX,20.0,2025-03-21,16500.0,put
