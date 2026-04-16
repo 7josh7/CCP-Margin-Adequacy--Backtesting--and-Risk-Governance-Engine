@@ -1,0 +1,749 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{hyperref}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    pdftitle={CCP Margin Engine Explainer}
+}
+
+\title{CCP Margin Adequacy, Backtesting, and Risk Governance Engine\\
+\large Detailed LaTeX Explanation with Mathematical Concepts}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Executive Summary}
+
+The CCP Margin Adequacy, Backtesting, and Risk Governance Engine is a stylised risk platform that evaluates whether a clearing member's posted collateral is sufficient to absorb liquidation-adjusted losses under both ordinary and stressed market conditions. The engine is deliberately broader than a stand-alone Value-at-Risk calculation. It combines:
+
+\begin{itemize}
+    \item synthetic market and portfolio generation,
+    \item full revaluation pricing for futures and listed options,
+    \item historical simulation and stressed Value-at-Risk,
+    \item liquidity and concentration add-ons,
+    \item adequacy controls and margin-call logic,
+    \item backtesting and data-quality controls,
+    \item rule-based governance escalations, and
+    \item committee-ready reporting.
+\end{itemize}
+
+The core business question is:
+\[
+\text{Is posted collateral sufficient to cover liquidation-adjusted loss for each member on each day?}
+\]
+
+The engine is educational rather than production-grade, but it is organised in a production-style architecture. The quantitative point is not merely to estimate market risk, but to transform risk estimates into operational and governance decisions.
+
+\section{Notation and System Structure}
+
+\subsection{Indices and State Variables}
+
+Let:
+\begin{align*}
+m &\in \{1,\dots,M\} && \text{index clearing members},\\
+i &\in \{1,\dots,I\} && \text{index instruments},\\
+j &\in \{1,\dots,J\} && \text{index risk factors},\\
+t &\in \{1,\dots,T\} && \text{index business dates}.
+\end{align*}
+
+The key state variables are:
+\begin{align*}
+S_{j,t} &:= \text{spot level of risk factor } j \text{ at date } t,\\
+r_{j,t} &:= \log(S_{j,t}/S_{j,t-1}) \text{ one-day log return},\\
+q_{m,i,t} &:= \text{position quantity of member } m \text{ in instrument } i,\\
+V_{m,t} &:= \text{portfolio value of member } m \text{ at date } t,\\
+\Pi_{m,t} &:= \text{one-day profit and loss of member } m,\\
+\text{IM}_{m,t} &:= \text{required initial margin},\\
+\text{PM}_{m,t} &:= \text{posted collateral after haircut}.
+\end{align*}
+
+\subsection{Architecture}
+
+The implementation is separated into the following modules.
+
+\begin{center}
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.22\textwidth} >{\raggedright\arraybackslash}p{0.46\textwidth} >{\raggedright\arraybackslash}p{0.22\textwidth}}
+\toprule
+Module & Function & Main Files \\
+\midrule
+Data and portfolio & Generate synthetic market data, instruments, member types, positions, collateral & \texttt{src/portfolio.py}, \texttt{src/data\_loader.py} \\
+Pricing and P\&L & Full revaluation of futures and options; daily P\&L generation & \texttt{src/pricing.py} \\
+Scenario engine & Historical and stressed return scenario construction & \texttt{src/scenarios.py} \\
+Margin methodology & Historical VaR, stressed VaR, liquidity and concentration add-ons & \texttt{src/margin.py}, \texttt{src/liquidity.py}, \texttt{src/concentration.py} \\
+Adequacy controls & Coverage ratios, traffic lights, margin call logic & \texttt{src/controls.py} \\
+Monitoring & Backtesting exceptions and data-quality checks & \texttt{src/backtesting.py} \\
+Governance & Escalation rules and breach handling & \texttt{src/escalation.py} \\
+Reporting & Daily, weekly, and committee-style outputs & \texttt{src/reporting.py} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Synthetic Data Layer}
+
+\subsection{Risk Factors}
+
+The platform models eight primary risk factors:
+\[
+\{\text{SPX}, \text{NDX}, \text{RTY}, \text{TY}, \text{FV}, \text{US}, \text{VIX}, \text{CL}\}.
+\]
+
+These cover equity-index, rates, volatility, and commodity risk. The synthetic market-data generator uses fat-tailed shocks rather than Gaussian shocks. Specifically, each factor is generated using Student-\(t\) innovations with \(\nu=5\) degrees of freedom:
+\[
+\varepsilon_{j,t} \sim t_{\nu}, \qquad \nu=5.
+\]
+
+If \(\sigma_j^{\text{ann}}\) denotes the annual volatility assigned to factor \(j\), the daily-scale volatility is:
+\[
+\sigma_j^{\text{day}} = \frac{\sigma_j^{\text{ann}}}{\sqrt{252}}.
+\]
+
+The synthetic one-day return is then:
+\[
+r_{j,t} = \sigma_j^{\text{day}} \varepsilon_{j,t},
+\]
+and the spot path is constructed through exponential accumulation:
+\[
+S_{j,t} = S_{j,0}\exp\left(\sum_{u=1}^{t} r_{j,u}\right).
+\]
+
+This is useful because the Student-\(t\) innovations generate heavier tails than a Gaussian model, which makes downstream VaR and backtesting behaviour more realistic.
+
+\subsection{Realised Volatility Proxy}
+
+The option-pricing layer uses a realised-volatility proxy. For each factor:
+\[
+\widehat{\sigma}_{j,t}^{(20)} =
+\sqrt{252}\,\mathrm{Std}\left(r_{j,t-19},\dots,r_{j,t}\right),
+\]
+where the rolling standard deviation is computed over a 20-business-day lookback. This realised volatility is used as the volatility input for Black-Scholes in the listed-option module.
+
+\subsection{Member Archetypes and Positions}
+
+The engine uses ten stylised members, including directional macro, relative value, concentrated volatility, diversified, and weak-liquidity members. The design purpose is not only to create heterogeneity of exposures, but also to ensure that the governance layer has something non-trivial to detect.
+
+At each date \(t\), a member portfolio is represented by quantities \(q_{m,i,t}\). Market value for each position is:
+\[
+\text{MV}_{m,i,t} = q_{m,i,t} \cdot M_i \cdot S_{\text{und}(i),t},
+\]
+where \(M_i\) is the contract multiplier and \(\text{und}(i)\) is the underlying risk factor for instrument \(i\).
+
+\subsection{Collateral}
+
+Each member posts a mixture of cash and government bond collateral. Let:
+\begin{align*}
+C_{m,t}^{\text{cash}} &:= \text{cash collateral},\\
+C_{m,t}^{\text{bond}} &:= \text{government bond collateral},\\
+h_{m,t} &:= \text{bond haircut}.
+\end{align*}
+
+Then posted margin after haircut is:
+\[
+\text{PM}_{m,t}
+= C_{m,t}^{\text{cash}} + C_{m,t}^{\text{bond}}(1-h_{m,t}).
+\]
+
+This quantity is what the adequacy layer compares against required initial margin.
+
+\section{Pricing and Daily P\&L}
+
+\subsection{Futures Pricing}
+
+For a futures contract \(i\) on underlying \(j\), the engine uses a simple linear mark:
+\[
+P_{i,t}^{\text{future}} = M_i S_{j,t}.
+\]
+
+For quantity \(q_{m,i,t}\), the contribution to portfolio value is:
+\[
+V_{m,i,t}^{\text{future}} = q_{m,i,t} P_{i,t}^{\text{future}}.
+\]
+
+\subsection{Listed Option Pricing}
+
+For listed options, the engine uses the Black-Scholes model. Let \(S\) be underlying spot, \(K\) the strike, \(T\) time to expiry in years, \(r\) the risk-free rate, and \(\sigma\) the volatility input. Define:
+\[
+d_1 = \frac{\ln(S/K) + \left(r + \tfrac{1}{2}\sigma^2\right)T}{\sigma\sqrt{T}},
+\qquad
+d_2 = d_1 - \sigma\sqrt{T}.
+\]
+
+Then the call and put prices are:
+\begin{align*}
+C(S,K,T,r,\sigma) &= S\Phi(d_1) - Ke^{-rT}\Phi(d_2),\\
+P(S,K,T,r,\sigma) &= Ke^{-rT}\Phi(-d_2) - S\Phi(-d_1).
+\end{align*}
+
+The marked option value in the engine is:
+\[
+P_{i,t}^{\text{option}} = M_i \times
+\begin{cases}
+C(S,K,T,r,\sigma), & \text{if } i \text{ is a call},\\
+P(S,K,T,r,\sigma), & \text{if } i \text{ is a put}.
+\end{cases}
+\]
+
+\subsection{Portfolio Value and Daily P\&L}
+
+Portfolio value is the sum over all open instruments:
+\[
+V_{m,t} = \sum_{i=1}^{I} q_{m,i,t} P_{i,t}.
+\]
+
+The one-day P\&L used throughout the engine is the full-revaluation difference:
+\[
+\Pi_{m,t} = V_{m,t} - V_{m,t-1}.
+\]
+
+This is important: the VaR is not built from a linear factor approximation at the member level, but from the realised full-revaluation P\&L series generated by the pricing layer.
+
+\section{Scenario Engine and Baseline Risk}
+
+\subsection{Historical Return Matrix}
+
+Let the daily return vector be:
+\[
+R_t = (r_{1,t}, r_{2,t}, \dots, r_{J,t})^{\top}.
+\]
+
+The historical scenario engine constructs the matrix of the trailing \(500\) business days:
+\[
+\mathcal{H}_t = \{R_{t-499}, R_{t-498}, \dots, R_t\}.
+\]
+
+This forms the basis for historical simulation VaR.
+
+\subsection{Historical Simulation VaR}
+
+For a fixed member \(m\) and date \(t\), define the trailing member-level P\&L sample:
+\[
+\mathcal{P}_{m,t} = \{\Pi_{m,t-499}, \dots, \Pi_{m,t}\}.
+\]
+
+The \(99\%\) Historical Simulation VaR is:
+\[
+\text{HSVaR}_{m,t}^{99\%}
+=
+-Q_{0.01}\left(\mathcal{P}_{m,t}\right),
+\]
+where \(Q_{0.01}\) is the empirical \(1\%\) quantile. Since losses correspond to negative P\&L, the minus sign converts the lower-tail quantile into a positive capital number.
+
+\subsection{Stressed Window Selection}
+
+The engine also computes a stressed VaR using a \(60\)-day stressed sub-window. The stressed period is selected as the contiguous window with the highest realised SPX volatility. If \(r_{\text{SPX},u}\) denotes SPX returns, the stressed-window endpoint can be expressed conceptually as:
+\[
+u^{\star}
+=
+\arg\max_{u}
+\mathrm{Std}\left(
+r_{\text{SPX},u-59}, \dots, r_{\text{SPX},u}
+\right).
+\]
+
+The stressed set of dates is then:
+\[
+\mathcal{S}_t = \{u^{\star}-59,\dots,u^{\star}\}.
+\]
+
+The stressed VaR is computed by restricting the member P\&L series to this stressed subset:
+\[
+\text{SVaR}_{m,t}^{99\%}
+=
+-Q_{0.01}\left(\{\Pi_{m,u}: u \in \mathcal{S}_t\}\right).
+\]
+
+If too few stressed observations overlap the available member P\&L history, the implementation falls back to the ordinary historical VaR.
+
+\subsection{Baseline Margin}
+
+The baseline margin is:
+\[
+B_{m,t} = \max\left(\text{HSVaR}_{m,t}^{99\%}, \text{SVaR}_{m,t}^{99\%}\right).
+\]
+
+This is a simple but important anti-procyclicality device. During calm periods, ordinary historical VaR may fall materially. The stressed VaR acts as a floor tied to a high-volatility regime.
+
+\section{Liquidity Add-On}
+
+\subsection{Motivation}
+
+Pure VaR measures mark-to-market loss but not the cost of actually closing out a portfolio. A CCP margin framework should reflect liquidation cost. The engine therefore augments the baseline margin with a liquidity add-on that contains:
+
+\begin{itemize}
+    \item half-spread crossing cost,
+    \item market impact, and
+    \item liquidation-horizon scaling.
+\end{itemize}
+
+\subsection{Spread Cost}
+
+For position \(q_{m,i,t}\), underlying spot \(S_{j,t}\), bid-ask spread in basis points \(b_{j,t}\), and multiplier \(M_i\), the spread-crossing component is:
+\[
+\text{SC}_{m,i,t}
+=
+|q_{m,i,t}|\,M_i\,S_{j,t}\,\frac{b_{j,t}}{20000}.
+\]
+
+The denominator \(20000\) arises because the engine uses half the full bid-ask spread, and basis points must be converted into decimals.
+
+\subsection{Market Impact}
+
+Let \(\text{ADV}_{j,t}\) be the average daily volume of the relevant underlying, and let \(\alpha\) be the impact coefficient. The market-impact estimate is:
+\[
+\text{MI}_{m,i,t}
+=
+\alpha
+\sqrt{\frac{|q_{m,i,t}|}{\text{ADV}_{j,t}}}
+\,S_{j,t}\,|q_{m,i,t}|\,M_i.
+\]
+
+In the implementation, \(\alpha = 0.10\).
+
+The square-root form follows the common empirical intuition that execution cost increases sublinearly with size at first, but materially once trade size becomes large relative to market depth.
+
+\subsection{Liquidation-Horizon Scaling}
+
+If \(\ell_j\) is the liquidation horizon in days for factor \(j\), then the raw liquidity cost is scaled by \(\sqrt{\ell_j}\):
+\[
+\text{LC}_{m,i,t}
+
+=
+\left(\text{SC}_{m,i,t} + \text{MI}_{m,i,t}\right)\sqrt{\ell_j}.
+\]
+
+The engine uses:
+\[
+\ell_j =
+\begin{cases}
+2, & \text{liquid bucket},\\
+3, & \text{semi-liquid bucket},\\
+5, & \text{illiquid bucket}.
+\end{cases}
+\]
+
+\subsection{Member Liquidity Multiplier}
+
+Each member type has an additional liquidity multiplier \(\lambda_m^{\text{liq}}\) to reflect expected liquidation difficulty:
+\[
+\lambda_m^{\text{liq}} \in \{0.7, 0.8, 1.0, 1.3, 1.5\},
+\]
+with larger values assigned to concentrated-volatility or weak-liquidity members.
+
+The total liquidity add-on is:
+\[
+\text{LA}_{m,t}
+=
+\lambda_m^{\text{liq}}
+\sum_{i=1}^{I} \text{LC}_{m,i,t}.
+\]
+
+\section{Concentration Add-On}
+
+\subsection{ADV Fraction}
+
+Concentration is measured using position size relative to average daily volume:
+\[
+f_{m,i,t} = \frac{|q_{m,i,t}|}{\text{ADV}_{j,t}}.
+\]
+
+\subsection{Piecewise Concentration Rate}
+
+The engine defines a concentration rate function:
+\[
+c(f) =
+\begin{cases}
+0, & f < 0.10,\\
+0.10, & 0.10 \le f < 0.20,\\
+0.25, & f \ge 0.20.
+\end{cases}
+\]
+
+For each member-day, the implementation takes the maximum concentration rate across instruments:
+\[
+c_{m,t}^{\max} = \max_i c(f_{m,i,t}).
+\]
+
+The concentration add-on is then:
+\[
+\text{CA}_{m,t} = c_{m,t}^{\max} \cdot B_{m,t}.
+\]
+
+This design means concentration does not stack instrument by instrument; rather, the most severe crowding signal determines the add-on rate applied to baseline margin.
+
+\section{Required Margin and Adequacy}
+
+\subsection{Liquidation-Adjusted Loss}
+
+The central quantity in the project is the liquidation-adjusted loss:
+\[
+\text{LAL}_{m,t}
+=
+B_{m,t} + \text{LA}_{m,t} + \text{CA}_{m,t}.
+\]
+
+The engine sets:
+\[
+\text{IM}_{m,t} = \text{LAL}_{m,t}.
+\]
+
+Equivalently:
+\[
+\text{IM}_{m,t}
+=
+\max\left(\text{HSVaR}_{m,t}^{99\%}, \text{SVaR}_{m,t}^{99\%}\right)
+ + \text{LA}_{m,t}
+ + \text{CA}_{m,t}.
+\]
+
+\subsection{Coverage Ratio and Buffer}
+
+Once posted collateral is known, adequacy is measured through:
+\[
+\text{Coverage}_{m,t} = \frac{\text{PM}_{m,t}}{\text{IM}_{m,t}},
+\qquad
+\text{Buffer}_{m,t} = \text{PM}_{m,t} - \text{IM}_{m,t}.
+\]
+
+\subsection{Traffic-Light Classification}
+
+The traffic-light rule is:
+\[
+\text{TL}_{m,t}
+=
+\begin{cases}
+\text{green}, & \text{Coverage}_{m,t} \ge 1.10,\\
+\text{amber}, & 1.00 \le \text{Coverage}_{m,t} < 1.10,\\
+\text{red}, & \text{Coverage}_{m,t} < 1.00.
+\end{cases}
+\]
+
+This creates a direct operational interpretation:
+
+\begin{itemize}
+    \item green means comfortable over-collateralisation,
+    \item amber means coverage is technically sufficient but thin,
+    \item red means posted collateral is insufficient.
+\end{itemize}
+
+\subsection{Margin Call Amount}
+
+Let the shortfall be:
+\[
+\Delta_{m,t} = \text{IM}_{m,t} - \text{PM}_{m,t}.
+\]
+
+Let \(\tau\) be the operational threshold and \(\mu\) the minimum transfer amount. In the implementation:
+\[
+\tau = 100{,}000, \qquad \mu = 100{,}000.
+\]
+
+The margin call function is:
+\[
+\text{MC}_{m,t}
+=
+\begin{cases}
+0, & \Delta_{m,t} \le \tau,\\
+\max(\Delta_{m,t}, \mu), & \Delta_{m,t} > \tau.
+\end{cases}
+\]
+
+This prevents operational noise from generating very small calls.
+
+\section{Backtesting and Model Monitoring}
+
+\subsection{Exception Definition}
+
+The actual realised loss on date \(t\) is:
+\[
+\text{AL}_{m,t} = \max(-\Pi_{m,t}, 0).
+\]
+
+Backtesting compares this realised loss against prior-day required margin. The exception indicator is:
+\[
+I_{m,t}
+=
+\mathbf{1}\left\{
+\text{AL}_{m,t} > \text{IM}_{m,t-1}
+\right\}.
+\]
+
+An exception therefore means the prior day's margin estimate was not sufficient to cover the next day's realised loss.
+
+\subsection{Rolling Exception Count}
+
+For a \(250\)-day rolling window, the engine computes:
+\[
+E_{m,t}^{(250)}
+=
+\sum_{u=t-249}^{t} I_{m,u}.
+\]
+
+The exception traffic light is:
+\[
+\text{BT}_{m,t}
+=
+\begin{cases}
+\text{green}, & E_{m,t}^{(250)} < 3,\\
+\text{amber}, & 3 \le E_{m,t}^{(250)} < 5,\\
+\text{red}, & E_{m,t}^{(250)} \ge 5.
+\end{cases}
+\]
+
+\subsection{Interpretation}
+
+The monitoring logic is not purely statistical. If exceptions begin to cluster, this suggests a possible regime-specific weakness in the model, for example:
+
+\begin{itemize}
+    \item the VaR window may react too slowly,
+    \item stressed-window selection may be insufficiently conservative,
+    \item liquidity or concentration add-ons may be too weak, or
+    \item the options pricing proxy may fail to capture volatility shocks.
+\end{itemize}
+
+\section{Data-Quality and Pricing Controls}
+
+\subsection{Stale Data}
+
+For each factor, the engine flags sequences of zero returns. If:
+\[
+|r_{j,t}| < \varepsilon
+\]
+for more than two consecutive business days, a stale-data flag is raised. Conceptually, this is a control against unchanged vendor marks rather than a market event.
+
+\subsection{Outlier Returns}
+
+An outlier-return flag is triggered if:
+\[
+|r_{j,t}| > 0.15.
+\]
+
+\subsection{Implausible Volatility}
+
+The realised-volatility input is flagged if:
+\[
+\widehat{\sigma}_{j,t}^{(20)} < 0.01
+\qquad \text{or} \qquad
+\widehat{\sigma}_{j,t}^{(20)} > 3.00.
+\]
+
+\subsection{Exposure Jumps}
+
+For member-instrument market values, the engine computes day-over-day changes. If a new change exceeds the historical mean plus three standard deviations,
+\[
+|\Delta \text{MV}_{m,i,t}| > \mu_{m,i}^{\Delta \text{MV}} + 3\sigma_{m,i}^{\Delta \text{MV}},
+\]
+an exposure-jump flag is raised.
+
+\subsection{Pricing Validity}
+
+Option prices must remain finite and non-negative:
+\[
+P_{i,t}^{\text{option}} \in [0,\infty), \qquad
+P_{i,t}^{\text{option}} \neq \text{NaN}, \qquad
+P_{i,t}^{\text{option}} \neq \infty.
+\]
+
+These controls do not change the economics of the model, but they are essential for a governed calculation pipeline.
+
+\section{Governance and Escalation}
+
+\subsection{Rule-Based Escalation Framework}
+
+The governance layer turns quantitative states into actions. Define indicator functions:
+\begin{align*}
+R_{m,t}^{\text{red}} &= \mathbf{1}\{\text{TL}_{m,t} = \text{red}\},\\
+R_{m,t}^{\text{call}} &= \mathbf{1}\{\text{MC}_{m,t} > 0\},\\
+R_{m,t}^{\text{bt}} &= \mathbf{1}\{E_{m,t}^{(250)} \ge 4\},\\
+R_{m,t}^{\text{conc}} &= \mathbf{1}\left\{\frac{\text{CA}_{m,t}}{\text{IM}_{m,t}} > 0.25\right\},\\
+R_t^{\text{stale}} &= \mathbf{1}\{\text{critical stale-data condition holds at } t\}.
+\end{align*}
+
+The engine's main escalation rules can then be summarised as:
+
+\begin{center}
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.23\textwidth} >{\raggedright\arraybackslash}p{0.40\textwidth} >{\raggedright\arraybackslash}p{0.22\textwidth}}
+\toprule
+Rule & Quantitative condition & Owner \\
+\midrule
+Single red breach & \(R_{m,t}^{\text{red}}=1\) & Risk Analyst \\
+Consecutive red days & two or more consecutive dates with \(R_{m,t}^{\text{red}}=1\) & Senior Risk Officer \\
+Methodology review & \(E_{m,t}^{(250)} \ge 4\) & Model Validation \\
+Committee watchlist & \(\text{CA}_{m,t}/\text{IM}_{m,t} > 0.25\) & Risk Committee \\
+Provisional run & \(R_t^{\text{stale}}=1\) & Market Data Team \\
+Operational margin call & \(R_{m,t}^{\text{call}}=1\) & Margin Operations \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Why Governance Matters Mathematically}
+
+Mathematically, the model is a function:
+\[
+\mathcal{M}: (\text{market data}, \text{positions}, \text{collateral}, \text{parameters})
+\mapsto
+(\text{margin}, \text{adequacy}, \text{exceptions}, \text{escalations}).
+\]
+
+The governance framework defines how to act when the output of \(\mathcal{M}\) breaches certain thresholds. In other words, governance is the decision layer attached to the model.
+
+\section{Reporting Layer}
+
+The reporting module transforms the state of the engine into artifacts intended for daily and committee consumption.
+
+\subsection{Daily Outputs}
+
+For the latest date \(t\), the daily member-adequacy table contains:
+\[
+(\text{IM}_{m,t}, \text{PM}_{m,t}, \text{Coverage}_{m,t}, \text{TL}_{m,t}, \text{MC}_{m,t}).
+\]
+
+The breach register supplements this with:
+\[
+(\text{breach type}, \text{severity}, \text{owner}, \text{escalation level}, \text{target resolution date}).
+\]
+
+\subsection{Weekly and Monthly Outputs}
+
+The weekly report aggregates:
+\begin{itemize}
+    \item backtesting exceptions,
+    \item concentration events,
+    \item stale-data incidents, and
+    \item escalation counts.
+\end{itemize}
+
+The monthly committee pack adds:
+\begin{itemize}
+    \item time series of total required margin,
+    \item weakest members by average coverage,
+    \item coverage-ratio distribution statistics,
+    \item exception summaries, and
+    \item known limitations and recommended actions.
+\end{itemize}
+
+\section{End-to-End Daily Pipeline}
+
+At a high level, the daily pipeline can be described as:
+
+\begin{enumerate}
+    \item Generate or load market data, instruments, members, positions, and collateral.
+    \item Revalue all portfolios and compute member-level daily P\&L.
+    \item Compute historical and stressed VaR for each member.
+    \item Add liquidity and concentration penalties.
+    \item Compute required margin and compare it with posted collateral.
+    \item Generate traffic lights and margin calls.
+    \item Backtest prior-day margins against realised losses.
+    \item Run data-quality and model-control checks.
+    \item Generate escalation events.
+    \item Produce daily, weekly, and committee-facing reports.
+\end{enumerate}
+
+This can be summarised compactly as:
+\[
+(\text{Data})
+\to
+(\text{Pricing})
+\to
+(\text{VaR})
+\to
+(\text{Add-ons})
+\to
+(\text{Adequacy})
+\to
+(\text{Backtesting and Controls})
+\to
+(\text{Escalation})
+\to
+(\text{Reporting}).
+\]
+
+\section{Limitations}
+
+The mathematical structure is coherent, but several simplifications remain:
+
+\begin{itemize}
+    \item The margin methodology is stylised and omits many CCP production features such as cross-margin offsets, legal account segregation, and default waterfalls.
+    \item Option pricing uses a Black-Scholes framework with realised-volatility proxy rather than a full implied-volatility surface.
+    \item Rates futures are handled through a linear approximation rather than a richer term-structure model.
+    \item Liquidity and concentration costs are intentionally simple and parameterised rather than calibrated from execution data.
+    \item Default management and auction mechanics are not modelled.
+\end{itemize}
+
+These limitations do not invalidate the project. Rather, they define its role as a teaching and portfolio platform for quantitative risk concepts.
+
+\section{Possible Extensions}
+
+Natural quantitative extensions include:
+
+\begin{itemize}
+    \item filtered historical simulation or expected shortfall in place of pure historical VaR,
+    \item scenario-dependent implied-volatility surfaces for listed options,
+    \item more realistic liquidation curves and impact calibration,
+    \item wrong-way collateral risk and eligibility schedules,
+    \item member credit-state modelling, and
+    \item richer stress scenarios with cross-asset contagion.
+\end{itemize}
+
+\section{Appendix: Parameter Summary}
+
+\begin{center}
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.40\textwidth} >{\raggedright\arraybackslash}p{0.20\textwidth} >{\raggedright\arraybackslash}p{0.25\textwidth}}
+\toprule
+Parameter & Value & Role \\
+\midrule
+VaR confidence level & \(99\%\) & Tail quantile for margin sizing \\
+Historical window & \(500\) days & Historical simulation sample \\
+Stressed window & \(60\) days & High-volatility sub-window \\
+Risk-free rate & \(4.5\%\) & Black-Scholes input \\
+Impact coefficient \(\alpha\) & \(0.10\) & Market-impact scaling \\
+Green adequacy threshold & \(1.10\) & Comfortable collateral coverage \\
+Amber adequacy threshold & \(1.00\) & Minimum full coverage \\
+Margin threshold & \$100{,}000 & Operational trigger threshold \\
+Minimum transfer amount & \$100{,}000 & Minimum call size \\
+Backtesting warning level & \(3\) & Amber exception level \\
+Backtesting critical level & \(5\) & Red exception level \\
+Stale-data threshold & \(2\) days & Data-quality control threshold \\
+Outlier return threshold & \(15\%\) & Return anomaly control threshold \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Appendix: Mapping Equations to Code}
+
+\begin{center}
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.36\textwidth} >{\raggedright\arraybackslash}p{0.50\textwidth}}
+\toprule
+Concept & Implementation location \\
+\midrule
+Synthetic market generation & \texttt{src/portfolio.py::generate\_market\_data} \\
+Instrument and member generation & \texttt{src/portfolio.py::generate\_instruments}, \texttt{generate\_member\_profiles} \\
+Full revaluation P\&L & \texttt{src/pricing.py::compute\_daily\_pnl} \\
+Black-Scholes pricing & \texttt{src/pricing.py::\_bs\_price}, \texttt{price\_instrument} \\
+Historical and stressed scenarios & \texttt{src/scenarios.py} \\
+Historical VaR and stressed VaR & \texttt{src/margin.py::historical\_simulation\_var}, \texttt{stressed\_var} \\
+Liquidity add-on & \texttt{src/liquidity.py::compute\_liquidity\_addon} \\
+Concentration add-on & \texttt{src/concentration.py::compute\_concentration\_addon} \\
+Coverage ratio and margin call & \texttt{src/controls.py} \\
+Backtesting exceptions & \texttt{src/backtesting.py::compute\_exceptions} \\
+Escalation rules & \texttt{src/escalation.py} \\
+Reports and breach register & \texttt{src/reporting.py} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}
