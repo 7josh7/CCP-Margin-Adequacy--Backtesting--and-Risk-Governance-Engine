@@ -321,7 +321,6 @@ The square-root form follows the common empirical intuition that execution cost 
 If \(\ell_j\) is the liquidation horizon in days for factor \(j\), then the raw liquidity cost is scaled by \(\sqrt{\ell_j}\):
 \[
 \text{LC}_{m,i,t}
-
 =
 \left(\text{SC}_{m,i,t} + \text{MI}_{m,i,t}\right)\sqrt{\ell_j}.
 \]
@@ -654,15 +653,15 @@ At a high level, the daily pipeline can be described as:
 \end{enumerate}
 
 This can be summarised compactly as:
-\[
+\begin{align*}
 (\text{Data})
-\to
+&\to
 (\text{Pricing})
 \to
 (\text{VaR})
 \to
-(\text{Add-ons})
-\to
+(\text{Add-ons})\\
+&\to
 (\text{Adequacy})
 \to
 (\text{Backtesting and Controls})
@@ -670,7 +669,7 @@ This can be summarised compactly as:
 (\text{Escalation})
 \to
 (\text{Reporting}).
-\]
+\end{align*}
 
 \section{Limitations}
 
